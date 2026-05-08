@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市儀表板 (K線與成交量 專業版)</title>
+    <title>個人股市儀表板 (K線圖進階切換版)</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
@@ -21,14 +21,19 @@
         .stock-title { font-size: 24px; font-weight: bold; }
         .stock-price { font-size: 36px; font-weight: bold; }
         .stock-change { font-size: 18px; font-weight: 500; }
-        .range-selector { display: flex; gap: 0; margin-bottom: 15px; border-bottom: 1px solid #ddd; }
+        
+        .controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;}
+        .range-selector { display: flex; gap: 0; }
         .range-btn { background: transparent; color: #5f6368; border: none; border-bottom: 3px solid transparent; border-radius: 0; padding: 10px 15px; font-size: 14px; font-weight: bold; cursor: pointer; }
         .range-btn:hover { background: #f1f3f4; }
         .range-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
         
-        /* ★ 圖表容器：設定固定高度讓 TradingView 自動填滿 */
+        /* ★ 新增：圖表顯示開關的樣式 */
+        .chart-toggles { display: flex; gap: 15px; font-size: 15px; font-weight: 500;}
+        .chart-toggles label { cursor: pointer; display: flex; align-items: center; gap: 5px; color: #333; user-select: none; }
+        .chart-toggles input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
         .chart-container { width: 100%; height: 500px; margin-bottom: 20px; position: relative; border: 1px solid #eee; border-radius: 5px; overflow: hidden; }
-        
         .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; border-top: 1px solid #eee; padding-top: 20px; }
         .stat-item { display: flex; flex-direction: column; }
         .stat-label { color: #5f6368; font-size: 14px; margin-bottom: 4px; }
@@ -42,7 +47,7 @@
 
 <div class="container">
     <div class="header">
-        <h2>我的股市儀表板 (K線圖)</h2>
+        <h2>我的股市儀表板</h2>
         <div class="search-bar">
             <input type="text" id="stockInput" placeholder="輸入台股代號 (例: 2330)">
             <button id="addBtn" onclick="addStock()">新增追蹤</button>
@@ -60,13 +65,21 @@
         </div>
     </div>
 
-    <div class="range-selector" id="rangeContainer">
-        <button class="range-btn" onclick="setRange('1d')">1 天</button>
-        <button class="range-btn" onclick="setRange('5d')">5 天</button>
-        <button class="range-btn active" onclick="setRange('1mo')">1 個月</button>
-        <button class="range-btn" onclick="setRange('6mo')">6 個月</button>
-        <button class="range-btn" onclick="setRange('ytd')">今年迄今</button>
-        <button class="range-btn" onclick="setRange('1y')">1 年</button>
+    <div class="controls-row">
+        <div class="range-selector" id="rangeContainer">
+            <button class="range-btn" onclick="setRange('1d')">1 天</button>
+            <button class="range-btn" onclick="setRange('5d')">5 天</button>
+            <button class="range-btn active" onclick="setRange('1mo')">1 個月</button>
+            <button class="range-btn" onclick="setRange('6mo')">6 個月</button>
+            <button class="range-btn" onclick="setRange('ytd')">今年迄今</button>
+            <button class="range-btn" onclick="setRange('1y')">1 年</button>
+        </div>
+        
+        <div class="chart-toggles">
+            <label><input type="checkbox" id="toggleLine" checked onchange="updateSeriesVisibility()"> 股價折線圖</label>
+            <label><input type="checkbox" id="toggleCandle" checked onchange="updateSeriesVisibility()"> K線圖</label>
+            <label><input type="checkbox" id="toggleVolume" checked onchange="updateSeriesVisibility()"> 成交量圖</label>
+        </div>
     </div>
 
     <div id="stockChart" class="chart-container"></div>
@@ -75,7 +88,7 @@
         <div class="stat-item"><span class="stat-label">開盤價</span><span class="stat-value" id="openPrice">--</span></div>
         <div class="stat-item"><span class="stat-label">最高價</span><span class="stat-value" id="highPrice">--</span></div>
         <div class="stat-item"><span class="stat-label">最低價</span><span class="stat-value" id="lowPrice">--</span></div>
-        <div class="stat-item"><span class="stat-label">今日成交量</span><span class="stat-value" id="volume">--</span></div>
+        <div class="stat-item"><span class="stat-label">當前成交量</span><span class="stat-value" id="volume">--</span></div>
     </div>
 </div>
 
@@ -83,9 +96,12 @@
     let watchlist = ['0050', '2330', '00981A'];
     let currentStock = '0050';
     let currentRange = '1mo';
-    let chartInstance = null; // 儲存圖表本體
-    let candleSeries = null;  // 儲存 K 線資料列
-    let volumeSeries = null;  // 儲存成交量資料列
+    
+    // 圖表與圖層變數
+    let chartInstance = null; 
+    let lineSeries = null;    // 折線圖層
+    let candleSeries = null;  // K線圖層
+    let volumeSeries = null;  // 成交量圖層
 
     const rangeConfig = {
         '1d': { interval: '5m' },
@@ -98,44 +114,55 @@
 
     async function init() {
         renderWatchlist();
-        initChart(); // 初始化圖表框架
+        initChart(); 
         await loadData();
     }
 
-    // ★ 初始化 TradingView 圖表框架
+    // 初始化 TradingView 圖表框架與三個圖層
     function initChart() {
         const chartContainer = document.getElementById('stockChart');
         chartInstance = LightweightCharts.createChart(chartContainer, {
-            autoSize: true, // 自動響應視窗大小
+            autoSize: true,
             layout: { textColor: '#333', background: { type: 'solid', color: '#ffffff' } },
             grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, // 內建完美十字游標
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             rightPriceScale: { borderColor: '#cccccc' },
-            timeScale: { 
-                borderColor: '#cccccc', 
-                timeVisible: true, // 允許顯示時與分 (用於 1天/5天)
-            },
+            timeScale: { borderColor: '#cccccc', timeVisible: true },
         });
 
-        // 建立 K 線圖圖層 (設定台灣股市的紅綠配色)
+        // 1. 建立 K 線圖圖層 (台灣紅漲綠跌)
         candleSeries = chartInstance.addCandlestickSeries({
-            upColor: '#ea4335',       // 紅漲
-            downColor: '#137333',     // 綠跌
-            borderVisible: false,
-            wickUpColor: '#ea4335',   // 上下影線顏色
-            wickDownColor: '#137333',
+            upColor: '#ea4335', downColor: '#137333', borderVisible: false,
+            wickUpColor: '#ea4335', wickDownColor: '#137333',
         });
 
-        // 建立成交量柱狀圖圖層 (疊加在圖表底部)
+        // 2. 建立折線圖圖層 (經典藍色)
+        lineSeries = chartInstance.addLineSeries({
+            color: '#1a73e8', lineWidth: 2, crosshairMarkerVisible: true,
+        });
+
+        // 3. 建立成交量柱狀圖圖層 (置於底部 20%)
         volumeSeries = chartInstance.addHistogramSeries({
             priceFormat: { type: 'volume' },
-            priceScaleId: '', // 設定為空字串，代表它不會和 K 線共用同一個價格 Y 軸
+            priceScaleId: '', 
         });
-
-        // 設定成交量圖層只佔據圖表底部的 20% 空間
         volumeSeries.priceScale().applyOptions({
             scaleMargins: { top: 0.8, bottom: 0 },
         });
+
+        // 套用目前的核取方塊狀態
+        updateSeriesVisibility();
+    }
+
+    // ★ 新增：根據核取方塊的狀態，即時顯示/隱藏對應的圖表
+    function updateSeriesVisibility() {
+        const showLine = document.getElementById('toggleLine').checked;
+        const showCandle = document.getElementById('toggleCandle').checked;
+        const showVolume = document.getElementById('toggleVolume').checked;
+
+        if (lineSeries) lineSeries.applyOptions({ visible: showLine });
+        if (candleSeries) candleSeries.applyOptions({ visible: showCandle });
+        if (volumeSeries) volumeSeries.applyOptions({ visible: showVolume });
     }
 
     function renderWatchlist() {
@@ -171,23 +198,23 @@
     }
 
     async function fetchWithFallback(url) {
+        // 強化代理伺服器陣列
         const proxies = [
-            `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
         ];
         for (let i = 0; i < proxies.length; i++) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 6000); // 放寬到 6 秒
                 const response = await fetch(proxies[i], { signal: controller.signal });
                 clearTimeout(timeoutId);
                 if (response.ok) return await response.json();
             } catch (error) {
-                console.warn(`代理伺服器 ${i+1} 失敗，嘗試下一個...`);
+                console.warn(`代理伺服器 ${i+1} 失敗...`);
             }
         }
-        throw new Error('所有伺服器皆忙碌中');
+        throw new Error('代理伺服器全數忙碌中');
     }
 
     async function loadData() {
@@ -198,7 +225,7 @@
             const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${currentStock}.TW?range=${currentRange}&interval=${config.interval}`;
             const data = await fetchWithFallback(yahooUrl);
             
-            if (data.chart.error) throw new Error('找不到該股票資料');
+            if (data.chart.error) throw new Error('API找不到該股票資料');
             
             const result = data.chart.result[0];
             const meta = result.meta;
@@ -211,59 +238,70 @@
             const closes = quote.close || [];
             const volumes = quote.volume || [];
             
-            const kLineData = [];
-            const volData = [];
-            let lastTimeKey = null;
-            
-            // ★ 將 Yahoo 的資料轉換為 TradingView 需要的格式
+            // ★ 強化防呆：先將所有資料打包並嚴格依時間排序，剔除無效資料
+            let rawData = [];
             for (let i = 0; i < timestamps.length; i++) {
-                const o = opens[i], h = highs[i], l = lows[i], c = closes[i], v = volumes[i];
-                
-                // 確保該時間點的資料完整沒有缺失 (Yahoo 偶爾會有 null 資料)
-                if (o !== null && h !== null && l !== null && c !== null && v !== null) {
-                    let timeValue;
-                    let timeKey;
+                if (opens[i] !== null && closes[i] !== null) {
+                    rawData.push({
+                        time: timestamps[i], 
+                        open: opens[i], high: highs[i], low: lows[i], close: closes[i], 
+                        volume: volumes[i] || 0
+                    });
+                }
+            }
+            // 嚴格依照時間戳遞增排序
+            rawData.sort((a, b) => a.time - b.time);
 
-                    // TradingView 規定：盤中資料(包含小時/分)要用 UNIX 時間戳，日線以上要用 {year, month, day} 物件
-                    if (currentRange === '1d' || currentRange === '5d') {
-                        // 修正時區偏移，讓圖表顯示台灣當地時間
-                        const offset = new Date().getTimezoneOffset() * 60; 
-                        timeValue = timestamps[i] - offset;
-                        timeKey = timeValue;
-                    } else {
-                        const d = new Date(timestamps[i] * 1000);
-                        timeValue = { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
-                        timeKey = `${timeValue.year}-${timeValue.month}-${timeValue.day}`;
-                    }
-
-                    // 防呆機制：過濾掉 Yahoo 偶爾傳來的重複時間點資料，避免圖表當機
-                    if (timeKey !== lastTimeKey) {
-                        const isUp = c >= o;
-                        // 成交量柱體的顏色：收盤>=開盤則為半透明紅，否則為半透明綠
-                        const volColor = isUp ? 'rgba(234, 67, 53, 0.6)' : 'rgba(19, 115, 51, 0.6)';
-
-                        kLineData.push({ time: timeValue, open: o, high: h, low: l, close: c });
-                        volData.push({ time: timeValue, value: v, color: volColor });
-                        lastTimeKey = timeKey;
-                    }
+            // ★ 強化防呆：去除重複的時間戳，確保資料能被圖表順利讀取
+            let uniqueData = [];
+            let lastTime = 0;
+            for (let item of rawData) {
+                if (item.time > lastTime) {
+                    uniqueData.push(item);
+                    lastTime = item.time;
                 }
             }
 
-            // 將處理好的資料餵給圖表
+            const kLineData = [];
+            const lineData = [];
+            const volData = [];
+            
+            // 格式化資料餵給三個不同的圖層
+            for (let d of uniqueData) {
+                let timeKey;
+                // 決定時間格式：日線以上用 YYYY-MM-DD，盤中用 UNIX 秒數
+                if (currentRange === '1mo' || currentRange === '6mo' || currentRange === 'ytd' || currentRange === '1y') {
+                    const dateObj = new Date(d.time * 1000);
+                    const y = dateObj.getFullYear();
+                    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    timeKey = `${y}-${m}-${day}`;
+                } else {
+                    timeKey = d.time; // TradingView 會自動轉換本地時間
+                }
+
+                const isUp = d.close >= d.open;
+                const volColor = isUp ? 'rgba(234, 67, 53, 0.6)' : 'rgba(19, 115, 51, 0.6)';
+
+                kLineData.push({ time: timeKey, open: d.open, high: d.high, low: d.low, close: d.close });
+                lineData.push({ time: timeKey, value: d.close }); // 折線圖只抓收盤價
+                volData.push({ time: timeKey, value: d.volume, color: volColor });
+            }
+
+            // 更新圖表資料
             candleSeries.setData(kLineData);
+            lineSeries.setData(lineData);
             volumeSeries.setData(volData);
             
-            // 讓圖表自動縮放以完美呈現所有資料
             chartInstance.timeScale().fitContent();
 
-            // 提取第一筆與最後一筆有效價格來計算區間漲跌幅
             const validClosePrices = kLineData.map(item => item.close);
             updateUI(meta, validClosePrices);
             setStatus('', '');
 
         } catch (error) {
-            console.error(error);
-            setStatus('資料載入失敗，可能是代號錯誤或網路問題。', 'error');
+            console.error("資料解析錯誤: ", error);
+            setStatus(`資料載入失敗 (${error.message})，請確認網路連線或稍後再試。`, 'error');
         }
     }
 
