@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>個人股市儀表板 (K線圖進階切換版)</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -28,7 +28,6 @@
         .range-btn:hover { background: #f1f3f4; }
         .range-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
         
-        /* ★ 新增：圖表顯示開關的樣式 */
         .chart-toggles { display: flex; gap: 15px; font-size: 15px; font-weight: 500;}
         .chart-toggles label { cursor: pointer; display: flex; align-items: center; gap: 5px; color: #333; user-select: none; }
         .chart-toggles input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
@@ -97,11 +96,10 @@
     let currentStock = '0050';
     let currentRange = '1mo';
     
-    // 圖表與圖層變數
     let chartInstance = null; 
-    let lineSeries = null;    // 折線圖層
-    let candleSeries = null;  // K線圖層
-    let volumeSeries = null;  // 成交量圖層
+    let lineSeries = null;    
+    let candleSeries = null;  
+    let volumeSeries = null;  
 
     const rangeConfig = {
         '1d': { interval: '5m' },
@@ -118,7 +116,6 @@
         await loadData();
     }
 
-    // 初始化 TradingView 圖表框架與三個圖層
     function initChart() {
         const chartContainer = document.getElementById('stockChart');
         chartInstance = LightweightCharts.createChart(chartContainer, {
@@ -130,18 +127,15 @@
             timeScale: { borderColor: '#cccccc', timeVisible: true },
         });
 
-        // 1. 建立 K 線圖圖層 (台灣紅漲綠跌)
         candleSeries = chartInstance.addCandlestickSeries({
             upColor: '#ea4335', downColor: '#137333', borderVisible: false,
             wickUpColor: '#ea4335', wickDownColor: '#137333',
         });
 
-        // 2. 建立折線圖圖層 (經典藍色)
         lineSeries = chartInstance.addLineSeries({
             color: '#1a73e8', lineWidth: 2, crosshairMarkerVisible: true,
         });
 
-        // 3. 建立成交量柱狀圖圖層 (置於底部 20%)
         volumeSeries = chartInstance.addHistogramSeries({
             priceFormat: { type: 'volume' },
             priceScaleId: '', 
@@ -150,11 +144,9 @@
             scaleMargins: { top: 0.8, bottom: 0 },
         });
 
-        // 套用目前的核取方塊狀態
         updateSeriesVisibility();
     }
 
-    // ★ 新增：根據核取方塊的狀態，即時顯示/隱藏對應的圖表
     function updateSeriesVisibility() {
         const showLine = document.getElementById('toggleLine').checked;
         const showCandle = document.getElementById('toggleCandle').checked;
@@ -198,7 +190,6 @@
     }
 
     async function fetchWithFallback(url) {
-        // 強化代理伺服器陣列
         const proxies = [
             `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
             `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
@@ -206,7 +197,7 @@
         for (let i = 0; i < proxies.length; i++) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 6000); // 放寬到 6 秒
+                const timeoutId = setTimeout(() => controller.abort(), 6000); 
                 const response = await fetch(proxies[i], { signal: controller.signal });
                 clearTimeout(timeoutId);
                 if (response.ok) return await response.json();
@@ -238,7 +229,6 @@
             const closes = quote.close || [];
             const volumes = quote.volume || [];
             
-            // ★ 強化防呆：先將所有資料打包並嚴格依時間排序，剔除無效資料
             let rawData = [];
             for (let i = 0; i < timestamps.length; i++) {
                 if (opens[i] !== null && closes[i] !== null) {
@@ -249,10 +239,8 @@
                     });
                 }
             }
-            // 嚴格依照時間戳遞增排序
             rawData.sort((a, b) => a.time - b.time);
 
-            // ★ 強化防呆：去除重複的時間戳，確保資料能被圖表順利讀取
             let uniqueData = [];
             let lastTime = 0;
             for (let item of rawData) {
@@ -266,10 +254,8 @@
             const lineData = [];
             const volData = [];
             
-            // 格式化資料餵給三個不同的圖層
             for (let d of uniqueData) {
                 let timeKey;
-                // 決定時間格式：日線以上用 YYYY-MM-DD，盤中用 UNIX 秒數
                 if (currentRange === '1mo' || currentRange === '6mo' || currentRange === 'ytd' || currentRange === '1y') {
                     const dateObj = new Date(d.time * 1000);
                     const y = dateObj.getFullYear();
@@ -277,18 +263,17 @@
                     const day = String(dateObj.getDate()).padStart(2, '0');
                     timeKey = `${y}-${m}-${day}`;
                 } else {
-                    timeKey = d.time; // TradingView 會自動轉換本地時間
+                    timeKey = d.time; 
                 }
 
                 const isUp = d.close >= d.open;
                 const volColor = isUp ? 'rgba(234, 67, 53, 0.6)' : 'rgba(19, 115, 51, 0.6)';
 
                 kLineData.push({ time: timeKey, open: d.open, high: d.high, low: d.low, close: d.close });
-                lineData.push({ time: timeKey, value: d.close }); // 折線圖只抓收盤價
+                lineData.push({ time: timeKey, value: d.close }); 
                 volData.push({ time: timeKey, value: d.volume, color: volColor });
             }
 
-            // 更新圖表資料
             candleSeries.setData(kLineData);
             lineSeries.setData(lineData);
             volumeSeries.setData(volData);
