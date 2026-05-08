@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市動態追蹤 (十字游標進階版)</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>個人股市儀表板 (K線與成交量 專業版)</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -25,7 +25,10 @@
         .range-btn { background: transparent; color: #5f6368; border: none; border-bottom: 3px solid transparent; border-radius: 0; padding: 10px 15px; font-size: 14px; font-weight: bold; cursor: pointer; }
         .range-btn:hover { background: #f1f3f4; }
         .range-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
-        .chart-container { width: 100%; height: 400px; margin-bottom: 20px; position: relative; }
+        
+        /* ★ 圖表容器：設定固定高度讓 TradingView 自動填滿 */
+        .chart-container { width: 100%; height: 500px; margin-bottom: 20px; position: relative; border: 1px solid #eee; border-radius: 5px; overflow: hidden; }
+        
         .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; border-top: 1px solid #eee; padding-top: 20px; }
         .stat-item { display: flex; flex-direction: column; }
         .stat-label { color: #5f6368; font-size: 14px; margin-bottom: 4px; }
@@ -39,7 +42,7 @@
 
 <div class="container">
     <div class="header">
-        <h2>我的股市儀表板</h2>
+        <h2>我的股市儀表板 (K線圖)</h2>
         <div class="search-bar">
             <input type="text" id="stockInput" placeholder="輸入台股代號 (例: 2330)">
             <button id="addBtn" onclick="addStock()">新增追蹤</button>
@@ -47,7 +50,6 @@
     </div>
     
     <div id="statusMsg"></div>
-
     <div class="watchlist" id="watchlistContainer"></div>
 
     <div class="stock-info">
@@ -67,15 +69,13 @@
         <button class="range-btn" onclick="setRange('1y')">1 年</button>
     </div>
 
-    <div class="chart-container">
-        <canvas id="stockChart"></canvas>
-    </div>
+    <div id="stockChart" class="chart-container"></div>
 
     <div class="grid-stats">
         <div class="stat-item"><span class="stat-label">開盤價</span><span class="stat-value" id="openPrice">--</span></div>
         <div class="stat-item"><span class="stat-label">最高價</span><span class="stat-value" id="highPrice">--</span></div>
         <div class="stat-item"><span class="stat-label">最低價</span><span class="stat-value" id="lowPrice">--</span></div>
-        <div class="stat-item"><span class="stat-label">成交量</span><span class="stat-value" id="volume">--</span></div>
+        <div class="stat-item"><span class="stat-label">今日成交量</span><span class="stat-value" id="volume">--</span></div>
     </div>
 </div>
 
@@ -83,7 +83,9 @@
     let watchlist = ['0050', '2330', '00981A'];
     let currentStock = '0050';
     let currentRange = '1mo';
-    let chartInstance = null;
+    let chartInstance = null; // 儲存圖表本體
+    let candleSeries = null;  // 儲存 K 線資料列
+    let volumeSeries = null;  // 儲存成交量資料列
 
     const rangeConfig = {
         '1d': { interval: '5m' },
@@ -94,42 +96,46 @@
         '1y': { interval: '1wk' }
     };
 
-    // ★ 自訂 Chart.js 十字游標擴充套件
-    const crosshairPlugin = {
-        id: 'crosshair',
-        afterDraw: chart => {
-            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length) {
-                const activePoint = chart.tooltip._active[0];
-                const ctx = chart.ctx;
-                const x = activePoint.element.x;
-                const y = activePoint.element.y;
-                const topY = chart.scales.y.top;
-                const bottomY = chart.scales.y.bottom;
-                const leftX = chart.scales.x.left;
-                const rightX = chart.scales.x.right;
-
-                ctx.save();
-                ctx.beginPath();
-                ctx.setLineDash([5, 5]); // 設定為虛線
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'; // 虛線顏色與透明度
-
-                // 畫鉛直線
-                ctx.moveTo(x, topY);
-                ctx.lineTo(x, bottomY);
-                // 畫水平線
-                ctx.moveTo(leftX, y);
-                ctx.lineTo(rightX, y);
-
-                ctx.stroke();
-                ctx.restore();
-            }
-        }
-    };
-
     async function init() {
         renderWatchlist();
+        initChart(); // 初始化圖表框架
         await loadData();
+    }
+
+    // ★ 初始化 TradingView 圖表框架
+    function initChart() {
+        const chartContainer = document.getElementById('stockChart');
+        chartInstance = LightweightCharts.createChart(chartContainer, {
+            autoSize: true, // 自動響應視窗大小
+            layout: { textColor: '#333', background: { type: 'solid', color: '#ffffff' } },
+            grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal }, // 內建完美十字游標
+            rightPriceScale: { borderColor: '#cccccc' },
+            timeScale: { 
+                borderColor: '#cccccc', 
+                timeVisible: true, // 允許顯示時與分 (用於 1天/5天)
+            },
+        });
+
+        // 建立 K 線圖圖層 (設定台灣股市的紅綠配色)
+        candleSeries = chartInstance.addCandlestickSeries({
+            upColor: '#ea4335',       // 紅漲
+            downColor: '#137333',     // 綠跌
+            borderVisible: false,
+            wickUpColor: '#ea4335',   // 上下影線顏色
+            wickDownColor: '#137333',
+        });
+
+        // 建立成交量柱狀圖圖層 (疊加在圖表底部)
+        volumeSeries = chartInstance.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: '', // 設定為空字串，代表它不會和 K 線共用同一個價格 Y 軸
+        });
+
+        // 設定成交量圖層只佔據圖表底部的 20% 空間
+        volumeSeries.priceScale().applyOptions({
+            scaleMargins: { top: 0.8, bottom: 0 },
+        });
     }
 
     function renderWatchlist() {
@@ -196,33 +202,67 @@
             
             const result = data.chart.result[0];
             const meta = result.meta;
+            const quote = result.indicators.quote[0];
+            
             const timestamps = result.timestamp || [];
-            const closePrices = result.indicators.quote[0].close || [];
+            const opens = quote.open || [];
+            const highs = quote.high || [];
+            const lows = quote.low || [];
+            const closes = quote.close || [];
+            const volumes = quote.volume || [];
             
-            const validData = [];
-            const validLabels = [];
+            const kLineData = [];
+            const volData = [];
+            let lastTimeKey = null;
             
-            closePrices.forEach((price, index) => {
-                if (price !== null) {
-                    validData.push(price);
-                    const date = new Date(timestamps[index] * 1000);
+            // ★ 將 Yahoo 的資料轉換為 TradingView 需要的格式
+            for (let i = 0; i < timestamps.length; i++) {
+                const o = opens[i], h = highs[i], l = lows[i], c = closes[i], v = volumes[i];
+                
+                // 確保該時間點的資料完整沒有缺失 (Yahoo 偶爾會有 null 資料)
+                if (o !== null && h !== null && l !== null && c !== null && v !== null) {
+                    let timeValue;
+                    let timeKey;
+
+                    // TradingView 規定：盤中資料(包含小時/分)要用 UNIX 時間戳，日線以上要用 {year, month, day} 物件
                     if (currentRange === '1d' || currentRange === '5d') {
-                        const m = date.getMonth() + 1;
-                        const d = date.getDate();
-                        const h = date.getHours().toString().padStart(2, '0');
-                        const min = date.getMinutes().toString().padStart(2, '0');
-                        validLabels.push(`${m}/${d} ${h}:${min}`);
+                        // 修正時區偏移，讓圖表顯示台灣當地時間
+                        const offset = new Date().getTimezoneOffset() * 60; 
+                        timeValue = timestamps[i] - offset;
+                        timeKey = timeValue;
                     } else {
-                        validLabels.push(`${date.getMonth() + 1}/${date.getDate()}`);
+                        const d = new Date(timestamps[i] * 1000);
+                        timeValue = { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+                        timeKey = `${timeValue.year}-${timeValue.month}-${timeValue.day}`;
+                    }
+
+                    // 防呆機制：過濾掉 Yahoo 偶爾傳來的重複時間點資料，避免圖表當機
+                    if (timeKey !== lastTimeKey) {
+                        const isUp = c >= o;
+                        // 成交量柱體的顏色：收盤>=開盤則為半透明紅，否則為半透明綠
+                        const volColor = isUp ? 'rgba(234, 67, 53, 0.6)' : 'rgba(19, 115, 51, 0.6)';
+
+                        kLineData.push({ time: timeValue, open: o, high: h, low: l, close: c });
+                        volData.push({ time: timeValue, value: v, color: volColor });
+                        lastTimeKey = timeKey;
                     }
                 }
-            });
+            }
 
-            updateUI(meta, validData); // 傳入 validData 來計算正確的區間漲跌幅
-            drawChart(validLabels, validData, meta);
+            // 將處理好的資料餵給圖表
+            candleSeries.setData(kLineData);
+            volumeSeries.setData(volData);
+            
+            // 讓圖表自動縮放以完美呈現所有資料
+            chartInstance.timeScale().fitContent();
+
+            // 提取第一筆與最後一筆有效價格來計算區間漲跌幅
+            const validClosePrices = kLineData.map(item => item.close);
+            updateUI(meta, validClosePrices);
             setStatus('', '');
 
         } catch (error) {
+            console.error(error);
             setStatus('資料載入失敗，可能是代號錯誤或網路問題。', 'error');
         }
     }
@@ -230,9 +270,7 @@
     function updateUI(meta, validData) {
         document.getElementById('stockName').textContent = `${meta.symbol.replace('.TW', '')}`;
         
-        // ★ 修正區間漲跌幅計算邏輯
         const currentPrice = validData[validData.length - 1] || meta.regularMarketPrice;
-        // 如果是 1 天，拿昨日收盤價比較；若是其他區間，拿該區間第一筆價格比較
         const basePrice = (currentRange === '1d') ? meta.previousClose : (validData[0] || meta.previousClose);
         
         const diff = currentPrice - basePrice;
@@ -258,69 +296,6 @@
         document.getElementById('lowPrice').textContent = meta.regularMarketDayLow ? meta.regularMarketDayLow.toFixed(2) : '--';
         const volume = meta.regularMarketVolume || 0;
         document.getElementById('volume').textContent = volume > 0 ? volume.toLocaleString() : '--';
-    }
-
-    function drawChart(labels, data, meta) {
-        const ctx = document.getElementById('stockChart').getContext('2d');
-        if (chartInstance) chartInstance.destroy();
-
-        const firstPrice = data[0] || meta.previousClose;
-        const lastPrice = data[data.length - 1] || meta.regularMarketPrice;
-        const lineColor = lastPrice >= firstPrice ? '#ea4335' : '#137333'; 
-        const bgColor = lastPrice >= firstPrice ? 'rgba(234, 67, 53, 0.1)' : 'rgba(19, 115, 51, 0.1)';
-
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '股價',
-                    data: data,
-                    borderColor: lineColor,
-                    backgroundColor: bgColor,
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1,
-                    pointRadius: currentRange === '1d' ? 0 : 1,
-                    pointHoverRadius: 5
-                }]
-            },
-            plugins: [crosshairPlugin], // ★ 註冊手寫的十字游標套件
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false // 設定為 false 讓游標不一定要碰到點也會觸發
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { mode: 'index', intersect: false }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: {
-                            maxTicksLimit: 12,
-                            maxRotation: 0,
-                            callback: function(val, index) {
-                                let label = this.getLabelForValue(val);
-                                if (currentRange === '5d' && label.includes(':')) {
-                                    let parts = label.split(' ');
-                                    let datePart = parts[0];
-                                    let hourPart = parts[1].split(':')[0];
-                                    return `${datePart}(${hourPart})`;
-                                }
-                                if (currentRange === '1d' && label.includes(':')) {
-                                    return label.split(' ')[1];
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                }
-            }
-        });
     }
 
     function setStatus(msg, statusClass) {
