@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市動態追蹤 (高速穩定版)</title>
+    <title>個人股市動態追蹤 (十字游標進階版)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
@@ -94,6 +94,39 @@
         '1y': { interval: '1wk' }
     };
 
+    // ★ 自訂 Chart.js 十字游標擴充套件
+    const crosshairPlugin = {
+        id: 'crosshair',
+        afterDraw: chart => {
+            if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length) {
+                const activePoint = chart.tooltip._active[0];
+                const ctx = chart.ctx;
+                const x = activePoint.element.x;
+                const y = activePoint.element.y;
+                const topY = chart.scales.y.top;
+                const bottomY = chart.scales.y.bottom;
+                const leftX = chart.scales.x.left;
+                const rightX = chart.scales.x.right;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]); // 設定為虛線
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'; // 虛線顏色與透明度
+
+                // 畫鉛直線
+                ctx.moveTo(x, topY);
+                ctx.lineTo(x, bottomY);
+                // 畫水平線
+                ctx.moveTo(leftX, y);
+                ctx.lineTo(rightX, y);
+
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
     async function init() {
         renderWatchlist();
         await loadData();
@@ -131,26 +164,19 @@
         loadData();
     }
 
-    // ★ 關鍵升級：多重代理伺服器備援機制 (解決載入失敗與緩慢問題)
     async function fetchWithFallback(url) {
         const proxies = [
             `https://corsproxy.io/?${encodeURIComponent(url)}`,
             `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
             `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
         ];
-
         for (let i = 0; i < proxies.length; i++) {
             try {
-                // 加速策略：如果請求超過 5 秒沒回應，直接強制切換下一個
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
-                
                 const response = await fetch(proxies[i], { signal: controller.signal });
                 clearTimeout(timeoutId);
-
-                if (response.ok) {
-                    return await response.json();
-                }
+                if (response.ok) return await response.json();
             } catch (error) {
                 console.warn(`代理伺服器 ${i+1} 失敗，嘗試下一個...`);
             }
@@ -179,10 +205,8 @@
             closePrices.forEach((price, index) => {
                 if (price !== null) {
                     validData.push(price);
-                    
                     const date = new Date(timestamps[index] * 1000);
                     if (currentRange === '1d' || currentRange === '5d') {
-                        // 儲存為 "M/D HH:mm" 格式，讓游標提示(Tooltip)能顯示精確時間
                         const m = date.getMonth() + 1;
                         const d = date.getDate();
                         const h = date.getHours().toString().padStart(2, '0');
@@ -194,7 +218,7 @@
                 }
             });
 
-            updateUI(meta);
+            updateUI(meta, validData); // 傳入 validData 來計算正確的區間漲跌幅
             drawChart(validLabels, validData, meta);
             setStatus('', '');
 
@@ -203,12 +227,16 @@
         }
     }
 
-    function updateUI(meta) {
+    function updateUI(meta, validData) {
         document.getElementById('stockName').textContent = `${meta.symbol.replace('.TW', '')}`;
-        const currentPrice = meta.regularMarketPrice;
-        const previousClose = meta.previousClose;
-        const diff = currentPrice - previousClose;
-        const percent = (diff / previousClose) * 100;
+        
+        // ★ 修正區間漲跌幅計算邏輯
+        const currentPrice = validData[validData.length - 1] || meta.regularMarketPrice;
+        // 如果是 1 天，拿昨日收盤價比較；若是其他區間，拿該區間第一筆價格比較
+        const basePrice = (currentRange === '1d') ? meta.previousClose : (validData[0] || meta.previousClose);
+        
+        const diff = currentPrice - basePrice;
+        const percent = (diff / basePrice) * 100;
         
         const priceEl = document.getElementById('currentPrice');
         const changeEl = document.getElementById('priceChange');
@@ -257,9 +285,14 @@
                     pointHoverRadius: 5
                 }]
             },
+            plugins: [crosshairPlugin], // ★ 註冊手寫的十字游標套件
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false // 設定為 false 讓游標不一定要碰到點也會觸發
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: { mode: 'index', intersect: false }
@@ -267,20 +300,17 @@
                 scales: {
                     x: {
                         grid: { display: false },
-                        // ★ 關鍵升級：控制橫軸標籤的顯示方式
                         ticks: {
-                            maxTicksLimit: 12, // 強制限制標籤數量，避免擁擠
-                            maxRotation: 0,    // 讓文字保持水平
+                            maxTicksLimit: 12,
+                            maxRotation: 0,
                             callback: function(val, index) {
                                 let label = this.getLabelForValue(val);
-                                // 將 "5/8 09:15" 轉換成 "5/8(09)" 顯示在橫軸上
                                 if (currentRange === '5d' && label.includes(':')) {
                                     let parts = label.split(' ');
                                     let datePart = parts[0];
                                     let hourPart = parts[1].split(':')[0];
                                     return `${datePart}(${hourPart})`;
                                 }
-                                // 1天 的情況只顯示小時與分鐘 "09:15"
                                 if (currentRange === '1d' && label.includes(':')) {
                                     return label.split(' ')[1];
                                 }
