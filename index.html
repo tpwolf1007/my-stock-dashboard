@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市儀表板 (K線圖進階切換版)</title>
+    <title>個人股市儀表板 (時區校正版)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
@@ -124,7 +124,44 @@
             grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             rightPriceScale: { borderColor: '#cccccc' },
-            timeScale: { borderColor: '#cccccc', timeVisible: true },
+            
+            // ★ 核心升級：精準控制圖表下方與黑色游標標籤的時間格式
+            localization: {
+                timeFormatter: (time) => {
+                    if (typeof time === 'number') {
+                        // 盤中即時資料：加上 28800 秒 (8小時) 強制轉換為台灣時間
+                        const d = new Date((time + 28800) * 1000); 
+                        const y = d.getUTCFullYear();
+                        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(d.getUTCDate()).padStart(2, '0');
+                        const h = String(d.getUTCHours()).padStart(2, '0');
+                        const min = String(d.getUTCMinutes()).padStart(2, '0');
+                        // 統一輸出 YYYY/MM/DD HH:mm 格式
+                        return `${y}/${m}/${day} ${h}:${min}`;
+                    } else if (typeof time === 'string') {
+                        return time.replace(/-/g, '/'); // 將 YYYY-MM-DD 轉為 YYYY/MM/DD
+                    }
+                    return time;
+                }
+            },
+            timeScale: { 
+                borderColor: '#cccccc', 
+                timeVisible: true,
+                // ★ 控制底部橫軸的顯示格式，讓畫面保持乾淨
+                tickMarkFormatter: (time, tickMarkType, locale) => {
+                    if (typeof time === 'number') {
+                        const d = new Date((time + 28800) * 1000); 
+                        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(d.getUTCDate()).padStart(2, '0');
+                        const h = String(d.getUTCHours()).padStart(2, '0');
+                        const min = String(d.getUTCMinutes()).padStart(2, '0');
+                        return `${m}/${day} ${h}:${min}`;
+                    } else if (typeof time === 'string') {
+                        return time.replace(/-/g, '/');
+                    }
+                    return time;
+                }
+            },
         });
 
         candleSeries = chartInstance.addCandlestickSeries({
@@ -257,10 +294,11 @@
             for (let d of uniqueData) {
                 let timeKey;
                 if (currentRange === '1mo' || currentRange === '6mo' || currentRange === 'ytd' || currentRange === '1y') {
-                    const dateObj = new Date(d.time * 1000);
-                    const y = dateObj.getFullYear();
-                    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    // ★ 時區同步修正：日線級別也要加上 8 小時推算，確保不會因為午夜誤差算錯日期
+                    const dateObj = new Date((d.time + 28800) * 1000);
+                    const y = dateObj.getUTCFullYear();
+                    const m = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getUTCDate()).padStart(2, '0');
                     timeKey = `${y}-${m}-${day}`;
                 } else {
                     timeKey = d.time; 
