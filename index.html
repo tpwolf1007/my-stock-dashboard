@@ -2,21 +2,24 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市儀表板 (時區校正版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>個人股市儀表板 (RWD 手機完美適配版)</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
+        /* 基礎樣式 (適用於電腦版) */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
         .search-bar { display: flex; gap: 10px; }
         input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
-        button { padding: 8px 15px; background-color: #1a73e8; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.2s; }
+        button { padding: 8px 15px; background-color: #1a73e8; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.2s; white-space: nowrap; }
         button:hover { background-color: #1557b0; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
         .watchlist { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .watch-item { padding: 6px 16px; background: #e8f0fe; color: #1a73e8; border-radius: 20px; cursor: pointer; border: 1px solid transparent; font-weight: 500; }
         .watch-item.active { background: #1a73e8; color: white; }
+        
         .stock-info { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
         .stock-title { font-size: 24px; font-weight: bold; }
         .stock-price { font-size: 36px; font-weight: bold; }
@@ -33,6 +36,7 @@
         .chart-toggles input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
 
         .chart-container { width: 100%; height: 500px; margin-bottom: 20px; position: relative; border: 1px solid #eee; border-radius: 5px; overflow: hidden; }
+        
         .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; border-top: 1px solid #eee; padding-top: 20px; }
         .stat-item { display: flex; flex-direction: column; }
         .stat-label { color: #5f6368; font-size: 14px; margin-bottom: 4px; }
@@ -40,6 +44,37 @@
         #statusMsg { font-weight: bold; margin-bottom: 10px; }
         .loading { color: #f29900; }
         .error { color: #ea4335; }
+
+        /* =========================================
+           ★ RWD 響應式設計 (專為手機與小螢幕設計)
+           ========================================= */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .container { padding: 15px; }
+            
+            /* 標題與搜尋框改為上下排列，並讓搜尋框滿版 */
+            .header { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .search-bar { width: 100%; }
+            .search-bar input { flex-grow: 1; }
+            
+            .stock-price { font-size: 30px; }
+            
+            /* 控制列上下排列，確保不會因為螢幕太窄而重疊 */
+            .controls-row { flex-direction: column; align-items: flex-start; gap: 15px; }
+            
+            /* 時間區間按鈕改為可以橫向滑動，隱藏滾動條 */
+            .range-selector { width: 100%; overflow-x: auto; white-space: nowrap; padding-bottom: 2px; }
+            .range-selector::-webkit-scrollbar { display: none; } /* 隱藏捲軸讓畫面乾淨 */
+            
+            /* 圖表開關等距排列 */
+            .chart-toggles { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 10px; font-size: 14px; }
+            
+            /* 手機上自動縮小圖表高度，讓畫面更有呼吸空間 */
+            .chart-container { height: 350px; }
+            
+            /* 詳細數據從橫向 4 格變成 2x2 矩陣排列 */
+            .grid-stats { grid-template-columns: repeat(2, 1fr); gap: 15px 10px; }
+        }
     </style>
 </head>
 <body>
@@ -48,8 +83,8 @@
     <div class="header">
         <h2>我的股市儀表板</h2>
         <div class="search-bar">
-            <input type="text" id="stockInput" placeholder="輸入台股代號 (例: 2330)">
-            <button id="addBtn" onclick="addStock()">新增追蹤</button>
+            <input type="text" id="stockInput" placeholder="輸入代號 (例: 2330)">
+            <button id="addBtn" onclick="addStock()">新增</button>
         </div>
     </div>
     
@@ -58,7 +93,7 @@
 
     <div class="stock-info">
         <div class="stock-title" id="stockName">載入中...</div>
-        <div style="display: flex; align-items: baseline; gap: 10px;">
+        <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;">
             <div class="stock-price" id="currentPrice">--</div>
             <div class="stock-change" id="priceChange">--</div>
         </div>
@@ -75,9 +110,9 @@
         </div>
         
         <div class="chart-toggles">
-            <label><input type="checkbox" id="toggleLine" checked onchange="updateSeriesVisibility()"> 股價折線圖</label>
-            <label><input type="checkbox" id="toggleCandle" checked onchange="updateSeriesVisibility()"> K線圖</label>
-            <label><input type="checkbox" id="toggleVolume" checked onchange="updateSeriesVisibility()"> 成交量圖</label>
+            <label><input type="checkbox" id="toggleLine" checked onchange="updateSeriesVisibility()"> 折線</label>
+            <label><input type="checkbox" id="toggleCandle" checked onchange="updateSeriesVisibility()"> K線</label>
+            <label><input type="checkbox" id="toggleVolume" checked onchange="updateSeriesVisibility()"> 成交量</label>
         </div>
     </div>
 
@@ -119,27 +154,23 @@
     function initChart() {
         const chartContainer = document.getElementById('stockChart');
         chartInstance = LightweightCharts.createChart(chartContainer, {
-            autoSize: true,
+            autoSize: true, // 這行非常強大，它會隨時偵測容器大小變化並自動重繪圖表
             layout: { textColor: '#333', background: { type: 'solid', color: '#ffffff' } },
             grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             rightPriceScale: { borderColor: '#cccccc' },
-            
-            // ★ 核心升級：精準控制圖表下方與黑色游標標籤的時間格式
             localization: {
                 timeFormatter: (time) => {
                     if (typeof time === 'number') {
-                        // 盤中即時資料：加上 28800 秒 (8小時) 強制轉換為台灣時間
                         const d = new Date((time + 28800) * 1000); 
                         const y = d.getUTCFullYear();
                         const m = String(d.getUTCMonth() + 1).padStart(2, '0');
                         const day = String(d.getUTCDate()).padStart(2, '0');
                         const h = String(d.getUTCHours()).padStart(2, '0');
                         const min = String(d.getUTCMinutes()).padStart(2, '0');
-                        // 統一輸出 YYYY/MM/DD HH:mm 格式
                         return `${y}/${m}/${day} ${h}:${min}`;
                     } else if (typeof time === 'string') {
-                        return time.replace(/-/g, '/'); // 將 YYYY-MM-DD 轉為 YYYY/MM/DD
+                        return time.replace(/-/g, '/');
                     }
                     return time;
                 }
@@ -147,7 +178,6 @@
             timeScale: { 
                 borderColor: '#cccccc', 
                 timeVisible: true,
-                // ★ 控制底部橫軸的顯示格式，讓畫面保持乾淨
                 tickMarkFormatter: (time, tickMarkType, locale) => {
                     if (typeof time === 'number') {
                         const d = new Date((time + 28800) * 1000); 
@@ -294,7 +324,6 @@
             for (let d of uniqueData) {
                 let timeKey;
                 if (currentRange === '1mo' || currentRange === '6mo' || currentRange === 'ytd' || currentRange === '1y') {
-                    // ★ 時區同步修正：日線級別也要加上 8 小時推算，確保不會因為午夜誤差算錯日期
                     const dateObj = new Date((d.time + 28800) * 1000);
                     const y = dateObj.getUTCFullYear();
                     const m = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
@@ -364,6 +393,13 @@
         el.textContent = msg;
         el.className = statusClass;
     }
+
+    // 當視窗大小改變時，圖表會自動透過 autoSize: true 適應，但為求穩健加入防抖重新排版
+    window.addEventListener('resize', () => {
+        if(chartInstance) {
+            chartInstance.timeScale().fitContent();
+        }
+    });
 
     window.onload = init;
 </script>
