@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人股市動態追蹤 (真實數據版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .search-bar {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .stock-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+        .stock-title {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stock-price {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        .stock-change {
+            font-size: 18px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .grid-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-label {
+            color: #5f6368;
+            font-size: 14px;
+        }
+        .stat-value {
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .watchlist {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .watch-item {
+            padding: 5px 15px;
+            background: #e8f0fe;
+            color: #1a73e8;
+            border-radius: 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .watch-item.active {
+            border-color: #1a73e8;
+            background: #1a73e8;
+            color: white;
+        }
+        #loadingMsg {
+            color: #ea4335;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>我的股市儀表板 (真實數據)</h2>
+        <div class="search-bar">
+            <input type="text" id="stockInput" placeholder="輸入台股代號 (例: 2330)">
+            <button id="addBtn" onclick="addStock()">新增追蹤</button>
+        </div>
+    </div>
+    
+    <div id="loadingMsg">資料載入中，請稍候... (API 抓取可能需要幾秒鐘)</div>
+
+    <div class="watchlist" id="watchlistContainer"></div>
+
+    <div class="stock-info">
+        <div class="stock-title" id="stockName">--</div>
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+            <div class="stock-price" id="currentPrice">--</div>
+            <div class="stock-change" id="priceChange">--</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="stockChart"></canvas>
+    </div>
+
+    <div class="grid-stats">
+        <div class="stat-item">
+            <span class="stat-label">開盤價</span>
+            <span class="stat-value" id="openPrice">--</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">最高價</span>
+            <span class="stat-value" id="highPrice">--</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">最低價</span>
+            <span class="stat-value" id="lowPrice">--</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">成交筆數</span>
+            <span class="stat-value" id="volume">--</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    let watchlist = ['0050', '2330'];
+    let currentStock = '0050';
+    let chartInstance = null;
+    let twseDataCache = {}; // 快取證交所資料
+
+    // 初始化頁面
+    async function init() {
+        showLoading(true);
+        // 1. 網頁載入時，先去證交所把「今天所有股票」的資料抓下來備用
+        await fetchTWSEData();
+        renderWatchlist();
+        await switchStock('0050');
+        showLoading(false);
+    }
+
+// 從證交所 Open API 抓取當日所有上市股票資訊 (直接連線版)
+    async function fetchTWSEData() {
+        try {
+            // 直接連線證交所 API，不使用任何代理！
+            const response = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            data.forEach(item => {
+                twseDataCache[item.Code] = item;
+            });
+        } catch (error) {
+            console.error('無法取得證交所資料:', error);
+            document.getElementById('loadingMsg').textContent = '資料載入失敗，請重新整理。';
+        }
+    }
+    // 從 Yahoo Finance 抓取過去一個月的歷史走勢 (畫圖用)
+    // 為了避免前端 CORS 跨域問題，這裡使用 allorigins 免費代理
+    async function fetchHistoryChartData(symbol) {
+        try {
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.TW?range=1mo&interval=1d`;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
+            
+            const response = await fetch(proxyUrl);
+            const data = await response.json();
+            const parsedData = JSON.parse(data.contents);
+            
+            if (!parsedData.chart.result) return null;
+
+            const result = parsedData.chart.result[0];
+            const timestamps = result.timestamp;
+            const closePrices = result.indicators.quote[0].close;
+
+            // 將時間戳轉換為 MM/DD 格式
+            const labels = timestamps.map(ts => {
+                const date = new Date(ts * 1000);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            // 過濾掉 null 的無效報價
+            const validData = [];
+            const validLabels = [];
+            closePrices.forEach((price, index) => {
+                if (price !== null) {
+                    validData.push(price);
+                    validLabels.push(labels[index]);
+                }
+            });
+
+            return { labels: validLabels, prices: validData };
+        } catch (error) {
+            console.error('無法取得歷史圖表資料:', error);
+            return null;
+        }
+    }
+
+    function renderWatchlist() {
+        const container = document.getElementById('watchlistContainer');
+        container.innerHTML = '';
+        watchlist.forEach(symbol => {
+            const div = document.createElement('div');
+            div.className = `watch-item ${symbol === currentStock ? 'active' : ''}`;
+            
+            // 嘗試從證交所快取中找股票名稱
+            const stockName = twseDataCache[symbol] ? twseDataCache[symbol].Name : symbol;
+            div.textContent = `${stockName} (${symbol})`;
+            
+            div.onclick = () => switchStock(symbol);
+            container.appendChild(div);
+        });
+    }
+
+    async function addStock() {
+        const input = document.getElementById('stockInput');
+        const symbol = input.value.trim();
+        
+        if (!symbol) return;
+
+        if (!twseDataCache[symbol]) {
+            alert('在上市股票清單中找不到此代號 (注意: 上櫃股票如OTC代號不在此API範圍內)');
+            return;
+        }
+
+        if (!watchlist.includes(symbol)) {
+            watchlist.push(symbol);
+            input.value = '';
+            await switchStock(symbol);
+        }
+    }
+
+    async function switchStock(symbol) {
+        showLoading(true);
+        currentStock = symbol;
+        renderWatchlist();
+        
+        const stockData = twseDataCache[symbol];
+        if (stockData) {
+            updateUI(stockData);
+        }
+
+        // 抓取並繪製真實歷史圖表
+        const chartData = await fetchHistoryChartData(symbol);
+        if (chartData) {
+            drawChart(chartData.labels, chartData.prices);
+        } else {
+            alert('無法載入歷史線圖');
+        }
+        showLoading(false);
+    }
+
+    function updateUI(data) {
+        document.getElementById('stockName').textContent = `${data.Name} (${data.Code})`;
+        
+        const current = parseFloat(data.ClosingPrice);
+        // 台灣證交所 API 的 Change 欄位有時帶有正負號，有時沒有，需處理
+        let changeText = data.Change; 
+        
+        const priceEl = document.getElementById('currentPrice');
+        const changeEl = document.getElementById('priceChange');
+        
+        priceEl.textContent = current.toFixed(2);
+        
+        // 判斷漲跌 (假設開盤價或昨日收盤與今日的差異，這裡簡化用 API 提供的 Change 判斷)
+        if (changeText.includes('-')) {
+            priceEl.style.color = '#137333'; // 綠色跌
+            changeEl.style.color = '#137333';
+            changeEl.textContent = `${changeText} ↓`;
+        } else if (changeText === '0.00' || changeText === '0') {
+            priceEl.style.color = '#5f6368'; // 灰色平盤
+            changeEl.style.color = '#5f6368';
+            changeEl.textContent = `0.00 -`;
+        } else {
+            priceEl.style.color = '#ea4335'; // 紅色漲
+            changeEl.style.color = '#ea4335';
+            changeEl.textContent = `+${changeText.replace('+', '')} ↑`;
+        }
+
+        document.getElementById('openPrice').textContent = data.OpeningPrice;
+        document.getElementById('highPrice').textContent = data.HighestPrice;
+        document.getElementById('lowPrice').textContent = data.LowestPrice;
+        document.getElementById('volume').textContent = parseInt(data.Transaction).toLocaleString();
+    }
+
+    function drawChart(labels, data) {
+        const ctx = document.getElementById('stockChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+
+        // 判斷整個月趨勢是漲是跌來決定線條顏色
+        const firstPrice = data[0];
+        const lastPrice = data[data.length - 1];
+        const lineColor = lastPrice >= firstPrice ? '#ea4335' : '#137333'; 
+        const bgColor = lastPrice >= firstPrice ? 'rgba(234, 67, 53, 0.1)' : 'rgba(19, 115, 51, 0.1)';
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '收盤價',
+                    data: data,
+                    borderColor: lineColor,
+                    backgroundColor: bgColor,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 1,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        suggestedMin: Math.min(...data) * 0.98,
+                        suggestedMax: Math.max(...data) * 1.02
+                    }
+                }
+            }
+        });
+    }
+
+    function showLoading(show) {
+        document.getElementById('loadingMsg').style.display = show ? 'block' : 'none';
+        document.getElementById('addBtn').disabled = show;
+    }
+
+    window.onload = init;
+</script>
+
+</body>
+</html>
