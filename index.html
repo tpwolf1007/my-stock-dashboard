@@ -3,126 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人股市動態追蹤 (區間進階版)</title>
+    <title>個人股市動態追蹤 (高速穩定版)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f8f9fa;
-            color: #333;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-        }
-        .search-bar {
-            display: flex;
-            gap: 10px;
-        }
-        input[type="text"] {
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        button {
-            padding: 8px 15px;
-            background-color: #1a73e8;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.2s;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        .search-bar { display: flex; gap: 10px; }
+        input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+        button { padding: 8px 15px; background-color: #1a73e8; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.2s; }
         button:hover { background-color: #1557b0; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
-        
-        .watchlist {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .watch-item {
-            padding: 6px 16px;
-            background: #e8f0fe;
-            color: #1a73e8;
-            border-radius: 20px;
-            cursor: pointer;
-            border: 1px solid transparent;
-            font-weight: 500;
-        }
-        .watch-item.active {
-            background: #1a73e8;
-            color: white;
-        }
-
-        .stock-info {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            margin-bottom: 15px;
-        }
+        .watchlist { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .watch-item { padding: 6px 16px; background: #e8f0fe; color: #1a73e8; border-radius: 20px; cursor: pointer; border: 1px solid transparent; font-weight: 500; }
+        .watch-item.active { background: #1a73e8; color: white; }
+        .stock-info { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
         .stock-title { font-size: 24px; font-weight: bold; }
         .stock-price { font-size: 36px; font-weight: bold; }
         .stock-change { font-size: 18px; font-weight: 500; }
-
-        /* 新增：時間區間選擇器樣式 */
-        .range-selector {
-            display: flex;
-            gap: 0;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #ddd;
-        }
-        .range-btn {
-            background: transparent;
-            color: #5f6368;
-            border: none;
-            border-bottom: 3px solid transparent;
-            border-radius: 0;
-            padding: 10px 15px;
-            font-size: 14px;
-            font-weight: bold;
-        }
+        .range-selector { display: flex; gap: 0; margin-bottom: 15px; border-bottom: 1px solid #ddd; }
+        .range-btn { background: transparent; color: #5f6368; border: none; border-bottom: 3px solid transparent; border-radius: 0; padding: 10px 15px; font-size: 14px; font-weight: bold; cursor: pointer; }
         .range-btn:hover { background: #f1f3f4; }
-        .range-btn.active {
-            color: #1a73e8;
-            border-bottom-color: #1a73e8;
-        }
-
-        .chart-container {
-            width: 100%;
-            height: 400px;
-            margin-bottom: 20px;
-            position: relative;
-        }
-        .grid-stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            border-top: 1px solid #eee;
-            padding-top: 20px;
-        }
+        .range-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+        .chart-container { width: 100%; height: 400px; margin-bottom: 20px; position: relative; }
+        .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; border-top: 1px solid #eee; padding-top: 20px; }
         .stat-item { display: flex; flex-direction: column; }
         .stat-label { color: #5f6368; font-size: 14px; margin-bottom: 4px; }
         .stat-value { font-size: 16px; font-weight: bold; }
-        
-        #statusMsg { color: #ea4335; font-weight: bold; margin-bottom: 10px; }
+        #statusMsg { font-weight: bold; margin-bottom: 10px; }
+        .loading { color: #f29900; }
+        .error { color: #ea4335; }
     </style>
 </head>
 <body>
@@ -175,14 +85,13 @@
     let currentRange = '1mo';
     let chartInstance = null;
 
-    // 定義各時間區間對應的 API 參數
     const rangeConfig = {
-        '1d': { interval: '5m' },   // 1天: 5分鐘為一點
-        '5d': { interval: '15m' },  // 5天: 15分鐘為一點
-        '1mo': { interval: '1d' },  // 1個月: 1天為一點
-        '6mo': { interval: '1d' },  // 6個月: 1天為一點
-        'ytd': { interval: '1d' },  // 今年迄今: 1天為一點
-        '1y': { interval: '1wk' }   // 1年: 1週為一點
+        '1d': { interval: '5m' },
+        '5d': { interval: '15m' },
+        '1mo': { interval: '1d' },
+        '6mo': { interval: '1d' },
+        'ytd': { interval: '1d' },
+        '1y': { interval: '1wk' }
     };
 
     async function init() {
@@ -215,35 +124,52 @@
 
     function setRange(range) {
         currentRange = range;
-        
-        // 更新按鈕的 UI 狀態
         document.querySelectorAll('.range-btn').forEach(btn => {
             btn.classList.remove('active');
             if (btn.getAttribute('onclick').includes(range)) btn.classList.add('active');
         });
-        
         loadData();
     }
 
-    // 統一從 Yahoo Finance 抓取所有資料
+    // ★ 關鍵升級：多重代理伺服器備援機制 (解決載入失敗與緩慢問題)
+    async function fetchWithFallback(url) {
+        const proxies = [
+            `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+        ];
+
+        for (let i = 0; i < proxies.length; i++) {
+            try {
+                // 加速策略：如果請求超過 5 秒沒回應，直接強制切換下一個
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const response = await fetch(proxies[i], { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (error) {
+                console.warn(`代理伺服器 ${i+1} 失敗，嘗試下一個...`);
+            }
+        }
+        throw new Error('所有伺服器皆忙碌中');
+    }
+
     async function loadData() {
-        setStatus('載入中...', false);
+        setStatus('資料載入中...', 'loading');
         const config = rangeConfig[currentRange];
         
         try {
-            // 注意：台股上市代號後需加上 .TW (若為上櫃則需加 .TWO，此處為求簡化統一預設為 .TW)
             const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${currentStock}.TW?range=${currentRange}&interval=${config.interval}`;
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
+            const data = await fetchWithFallback(yahooUrl);
             
-            const response = await fetch(proxyUrl);
-            const data = await response.json();
-            
-            if (data.chart.error) throw new Error('找不到該股票資料，請確認代號是否為上市股票。');
+            if (data.chart.error) throw new Error('找不到該股票資料');
             
             const result = data.chart.result[0];
             const meta = result.meta;
-            
-            // 整理圖表資料
             const timestamps = result.timestamp || [];
             const closePrices = result.indicators.quote[0].close || [];
             
@@ -254,13 +180,15 @@
                 if (price !== null) {
                     validData.push(price);
                     
-                    // 根據區間決定時間標籤的顯示格式
                     const date = new Date(timestamps[index] * 1000);
                     if (currentRange === '1d' || currentRange === '5d') {
-                        // 顯示時:分
-                        validLabels.push(date.toLocaleTimeString('zh-TW', {hour: '2-digit', minute:'2-digit'}));
+                        // 儲存為 "M/D HH:mm" 格式，讓游標提示(Tooltip)能顯示精確時間
+                        const m = date.getMonth() + 1;
+                        const d = date.getDate();
+                        const h = date.getHours().toString().padStart(2, '0');
+                        const min = date.getMinutes().toString().padStart(2, '0');
+                        validLabels.push(`${m}/${d} ${h}:${min}`);
                     } else {
-                        // 顯示月/日
                         validLabels.push(`${date.getMonth() + 1}/${date.getDate()}`);
                     }
                 }
@@ -268,48 +196,38 @@
 
             updateUI(meta);
             drawChart(validLabels, validData, meta);
-            setStatus('', false);
+            setStatus('', '');
 
         } catch (error) {
-            console.error('抓取失敗:', error);
-            setStatus('資料載入失敗，可能是代號錯誤或網路問題。', true);
+            setStatus('資料載入失敗，可能是代號錯誤或網路問題。', 'error');
         }
     }
 
     function updateUI(meta) {
         document.getElementById('stockName').textContent = `${meta.symbol.replace('.TW', '')}`;
-        
         const currentPrice = meta.regularMarketPrice;
-        const previousClose = meta.previousClose; // 昨收價 (計算漲跌用)
+        const previousClose = meta.previousClose;
         const diff = currentPrice - previousClose;
         const percent = (diff / previousClose) * 100;
         
         const priceEl = document.getElementById('currentPrice');
         const changeEl = document.getElementById('priceChange');
-        
         priceEl.textContent = currentPrice.toFixed(2);
         
-        // 判斷紅漲綠跌
         if (diff > 0) {
-            priceEl.style.color = '#ea4335';
-            changeEl.style.color = '#ea4335';
+            priceEl.style.color = '#ea4335'; changeEl.style.color = '#ea4335';
             changeEl.textContent = `+${diff.toFixed(2)} (+${percent.toFixed(2)}%) ↑`;
         } else if (diff < 0) {
-            priceEl.style.color = '#137333';
-            changeEl.style.color = '#137333';
+            priceEl.style.color = '#137333'; changeEl.style.color = '#137333';
             changeEl.textContent = `${diff.toFixed(2)} (${percent.toFixed(2)}%) ↓`;
         } else {
-            priceEl.style.color = '#5f6368';
-            changeEl.style.color = '#5f6368';
+            priceEl.style.color = '#5f6368'; changeEl.style.color = '#5f6368';
             changeEl.textContent = `0.00 (0.00%) -`;
         }
 
-        // 更新下方詳細數據
         document.getElementById('openPrice').textContent = meta.regularMarketOpen ? meta.regularMarketOpen.toFixed(2) : '--';
         document.getElementById('highPrice').textContent = meta.regularMarketDayHigh ? meta.regularMarketDayHigh.toFixed(2) : '--';
         document.getElementById('lowPrice').textContent = meta.regularMarketDayLow ? meta.regularMarketDayLow.toFixed(2) : '--';
-        
-        // 格式化成交量 (加入千分位)
         const volume = meta.regularMarketVolume || 0;
         document.getElementById('volume').textContent = volume > 0 ? volume.toLocaleString() : '--';
     }
@@ -318,7 +236,6 @@
         const ctx = document.getElementById('stockChart').getContext('2d');
         if (chartInstance) chartInstance.destroy();
 
-        // 根據最新價和第一筆資料決定線條顏色
         const firstPrice = data[0] || meta.previousClose;
         const lastPrice = data[data.length - 1] || meta.regularMarketPrice;
         const lineColor = lastPrice >= firstPrice ? '#ea4335' : '#137333'; 
@@ -336,7 +253,7 @@
                     borderWidth: 2,
                     fill: true,
                     tension: 0.1,
-                    pointRadius: currentRange === '1d' ? 0 : 1, // 1天圖隱藏端點會比較好看
+                    pointRadius: currentRange === '1d' ? 0 : 1,
                     pointHoverRadius: 5
                 }]
             },
@@ -348,16 +265,38 @@
                     tooltip: { mode: 'index', intersect: false }
                 },
                 scales: {
-                    x: { grid: { display: false } }
+                    x: {
+                        grid: { display: false },
+                        // ★ 關鍵升級：控制橫軸標籤的顯示方式
+                        ticks: {
+                            maxTicksLimit: 12, // 強制限制標籤數量，避免擁擠
+                            maxRotation: 0,    // 讓文字保持水平
+                            callback: function(val, index) {
+                                let label = this.getLabelForValue(val);
+                                // 將 "5/8 09:15" 轉換成 "5/8(09)" 顯示在橫軸上
+                                if (currentRange === '5d' && label.includes(':')) {
+                                    let parts = label.split(' ');
+                                    let datePart = parts[0];
+                                    let hourPart = parts[1].split(':')[0];
+                                    return `${datePart}(${hourPart})`;
+                                }
+                                // 1天 的情況只顯示小時與分鐘 "09:15"
+                                if (currentRange === '1d' && label.includes(':')) {
+                                    return label.split(' ')[1];
+                                }
+                                return label;
+                            }
+                        }
+                    }
                 }
             }
         });
     }
 
-    function setStatus(msg, isError) {
+    function setStatus(msg, statusClass) {
         const el = document.getElementById('statusMsg');
         el.textContent = msg;
-        el.style.color = isError ? '#ea4335' : '#5f6368';
+        el.className = statusClass;
     }
 
     window.onload = init;
